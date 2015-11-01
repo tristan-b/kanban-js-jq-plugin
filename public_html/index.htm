@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+        <script src="https://code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
+        <script src="https://apis.google.com/js/client:platform.js?onload=startApp" async defer></script>
+        <script type="text/javascript" src="date.js"></script>
+        <script>
+            var gid = "224368332356-3svbmafnaab7dfvqt9d284l6lhchodd7.apps.googleusercontent.com";
+            var gsecret = "usvmLtcfM11bAS3X3YIa2Kyk";
+        </script>
+        <meta name="google-signin-client_id" content="224368332356-3svbmafnaab7dfvqt9d284l6lhchodd7.apps.googleusercontent.com"></meta>
+        <script src="kanban3.js"></script>
+        <script src="ewUsers.js"></script>
+        <script src="EwApi.js"></script>
+        <script src="fields.js"></script>
+        <link rel="stylesheet" href="https://code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
+        <link rel="stylesheet" href="styles.css">
+        <script>
+            var states = {performer_state: [
+                    "Choose one",
+                    "Agreed",
+                    "Counter Offer",
+                    "Pending",
+                    "Declined",
+                    "Revoke No Agreement",
+                    "Requester Revoked",
+                    "Cancelled/Closed",
+                    "Completed"],
+                requester_state: [
+                    "Open",
+                    "Assigned",
+                    "Agreed",
+                    "Counter Offer",
+                    "Agreed To Counter",
+                    "Accepted as Completed",
+                    "Pending",
+                    "Closed",
+                    "Cancelled/Closed",
+                    "Reassigned",
+                    "C/Offer Declined",
+                    "Declined",
+                    "Reject",
+                    "Revoke No Agreement",
+                    "New Assigned",
+                    "Completed"],
+                state: [
+                    "Preparation",
+                    "Negotiation",
+                    "Performance",
+                    "Transition",
+                    "Pending",
+                    "Cancelled/Closed",
+                    "Rejected",
+                    "Revoke No Agreement",
+                    "Requester Revoked",
+                    "Completed",
+                    "Closed"
+                ]};
+            function logit(msg) {
+                $("#log").append("<pre>" + msg + "</pre>");
+            }
+            $(document).ready(function () {
+                var ew = new api();
+                ew.setupApi({ewkb: "CX1", "user": "devadmin", "pass": "Chuffed1", "table": "furniture", "search": "Unclosed",
+                    "apiurl": "http://katara.techtime.org/ewws/"});
+                $("#log").draggable({});
+                var fieldFactory = new tb.fields();
+                var testFields = fieldFactory.getTestFields();
+                var users = new tb.users();
+                var loginsArr = users.getUsersArray(ew);
+                testFields[3].attributes.options = loginsArr.map(function (obj) {
+                    return obj._login;
+                });
+                fieldFactory.init(testFields, document.forms.edit);
+                ew.setupApi({table: "furniture", search: "Unclosed", "fieldsArr": testFields});
+
+                var cards = ew.searchTable();
+                //var users = new Users($("#assigned_to"));
+                $("#user").Users();
+                $("#user").val("tribsupp");
+                $("#assigned_to").Users();
+                //$("#main").Kanban();
+                var table = $("#table"),
+                        search = $("#search"),
+                        state_field = $("#state_field"),
+                        fields = $("#fields"),
+                        load = $("#load"),
+                        user = $("#user"),
+                        password = $("#password"),
+                        columns = $("#columns"),
+                        autoColumns = $("#autoColumns");
+                load.trigger("click");
+
+                state_field.on("change", function () {
+                    var newStateField = $(this).val();
+                    var columnsSelected = fields.val() || [];
+                    columnsSelected.push(newStateField);
+                    fields.val(columnsSelected);
+                    var stateCols = document.getElementById("columns");
+                    switch (newStateField) {
+                        case 'performer_state' :
+                            stateCols.selectedIndex = 0
+                            break;
+
+                        case 'requester_state' :
+                            stateCols.selectedIndex = 2
+                            break;
+
+                        case 'state' :
+                            stateCols.selectedIndex = 1;
+                            break;
+
+                    }
+                });
+//                $(".hotlink").on("click", function(e){
+//                    e.preventDefault();
+//                    console.log(this);
+//                    var hl = $(this).data("link");
+//                    // $("#ewFrame").attr("src", url);
+//                    console.log(hl);
+//                    // document.getElementById("ewFrame").src = url;
+////                    var iFrm = document.createElement("iframe");
+//  //                  $("#dialog").append(iFrm);
+//                    // iFrm.src = url;
+//                    $("#dialog").empty().html("<iframe src='"+hl+"' width='100%' height='100%'></iframe>");
+//                    $("#dialog").dialog("open");
+//                    return false;
+//                });
+                columns.on("change", function () {
+                    var selVal = $(this).val();
+                    var stateF = document.getElementById("state_field");
+                    if (selVal.search(/(Performer)/)) {
+                        stateF.selectedIndex = 0;
+                        var columnsSelected = fields.val();
+                        columnsSelected.push("performer_state");
+                        fields.val(columnsSelected);
+                    } else if (selfVal.search(/(Requester)/)) {
+                        stateF.selectedIndex = 1;
+                        var columnsSelected = fields.val();
+                        columnsSelected.push("requester_state");
+                        fields.val(columnsSelected);
+                    } else {
+                        stateF.selectedIndex = 2;
+                        var columnsSelected = fields.val();
+                        columnsSelected.push("state");
+                        fields.val(columnsSelected);
+                    }
+                })
+
+                load.on("click", function (e) {
+                    e.preventDefault();
+                    $(".kbstate").remove();
+                    var stateColumn = state_field.val();
+                    $(".state_field").remove();
+                    ew.setupApi({ewkb: "CX1",
+                        "user": user.val(),
+                        "pass": password.val(),
+                        "table": table.val(),
+                        "search": search.val(),
+                        "apiurl": "http://katara.techtime.org/ewws/",
+                        "fieldsArr": fields.val()});
+                    var cards = ew.searchTable();
+                    var opts = {
+                        columnField: stateColumn,
+                        search: search.val(),
+                        table: table.val(),
+                        fields: fields.val(),
+                        user: user.val(),
+                        password: password.val(),
+                        cols: eval(columns.val()),
+                        autoColumns: autoColumns.val(),
+                        cards: cards,
+                        user: user.val(),
+                        password: password.val()
+                    };
+                    logit(opts);
+                    $("#main").Kanban(opts);
+                    $("#main").sortable({
+                        connectWith: ".kbstate",
+                        forceHelperSize: true,
+                        forcePlaceholderSize: true
+                    });
+                    helper.people();
+                });
+                $("#closeSettings").on("click", function (e) {
+                    var cont = $("#menu");
+                    if (cont.css("margin-left") != "-975px") {
+                        cont.css({"margin-left": "-975px"});
+                        $(this).text("+");
+                    } else {
+                        cont.css({"margin-left": "-5px"});
+                        $(this).text("X");
+                    }
+
+                });
+
+            });
+            var auth2 = {};
+            var helper = (function () {
+                return {
+                    /**
+                     * Hides the sign in button and starts the post-authorization operations.
+                     *
+                     * @param {Object} authResult An Object which contains the access token and
+                     *   other authentication information.
+                     */
+                    onSignInCallback: function (authResult) {
+                        $('#log').append('Auth Result:<br/>');
+                        for (var field in authResult) {
+                            $('#log').append(' ' + field + ': ' +
+                                    authResult[field] + '<br/>\n');
+                        }
+                        if (authResult.isSignedIn.get()) {
+                            $('#authOps').show('slow');
+                            $('#gConnect').hide();
+                            helper.profile();
+                        } else if (authResult['error'] ||
+                                authResult.currentUser.get().getAuthResponse() == null) {
+                            // There was an error, which means the user is not signed in.
+                            // As an example, you can handle by writing to the console:
+                            //    console.log('There was an error: ' + authResult['error']);
+                            $('#log').append('Logged out');
+                            $('#authOps').hide('slow');
+                            $('#gConnect').show();
+                        }
+
+                        console.log('authResult', authResult);
+                    },
+                    /**
+                     * Calls the OAuth2 endpoint to disconnect the app for the user.
+                     */
+                    disconnect: function () {
+                        // Revoke the access token.
+                        auth2.disconnect();
+                    },
+                    /**
+                     * Gets and renders the list of people visible to this app.
+                     */
+                    /**
+                     * Gets and renders the currently signed in user's profile data.
+                     */
+                    profile: function () {
+                        gapi.client.plus.people.get({
+                            'userId': 'me'
+                        }).then(function (res) {
+                            var profile = res.result;
+                            console.log(profile);
+                            $('#profile').empty();
+                            $('#profile').append(
+                                    $('<p><img src=\"' + profile.image.url + '\"></p>'));
+                            if (profile.cover && profile.coverPhoto) {
+                                $('#profile').append(
+                                        $('<p><img src=\"' + profile.cover.coverPhoto.url + '\"></p>'));
+                            }
+                        }, function (err) {
+                            var error = err.result;
+                            $('#profile').empty();
+                            $('#profile').append(error.message);
+                        });
+                    },
+                    people: function () {
+                        gapi.client.plus.people.list({
+                            'userId': 'me',
+                            'collection': 'visible'
+                        }).then(function (res) {
+                            var people = res.result;
+                            
+                            console.log('Number of people visible to this app: ' +
+                                    people.totalItems + '<br/>');
+                            //console.log(people.items);
+                            for (var personIndex in people.items) {
+                                person = people.items[personIndex];
+                                $("."+person.displayName.replace(" ", "_")+"").each(function(ind, ele){
+                                    $(this).append("<img src='"+person.image.url+"'>");
+                                });
+                                //$('#visiblePeople').append('<img src="' + person.image.url + '">');
+                              //  console.log(person);
+                            }
+                        });
+                    }
+                };
+            })();
+
+            /**
+             * jQuery initialization
+             */
+            $(document).ready(function () {
+                $('#disconnect').click(helper.disconnect);
+                $('#loaderror').hide();
+                if ($('meta')[0].content == 'YOUR_CLIENT_ID') {
+                    alert('This sample requires your OAuth credentials (client ID) ' +
+                            'from the Google APIs console:\n' +
+                            '    https://code.google.com/apis/console/#:access\n\n' +
+                            'Find and replace YOUR_CLIENT_ID with your client ID.'
+                            );
+                }
+            });
+
+            /**
+             * Handler for when the sign-in state changes.
+             *
+             * @param {boolean} isSignedIn The new signed in state.
+             */
+            var updateSignIn = function () {
+                console.log('update sign in state');
+                if (auth2.isSignedIn.get()) {
+                    console.log('signed in');
+                    helper.onSignInCallback(gapi.auth2.getAuthInstance());
+                } else {
+                    console.log('signed out');
+                    helper.onSignInCallback(gapi.auth2.getAuthInstance());
+                }
+            }
+
+            /**
+             * This method sets up the sign-in listener after the client library loads.
+             */
+            function startApp() {
+                gapi.load('auth2', function () {
+                    gapi.client.load('plus', 'v1').then(function () {
+                        gapi.auth2.init({fetch_basic_profile: false,
+                            scope: 'https://www.googleapis.com/auth/plus.login'}).then(
+                                function () {
+                                    console.log('init');
+                                    auth2 = gapi.auth2.getAuthInstance();
+                                    if (auth2.isSignedIn.get()) {
+                                        var profile = auth2.currentUser.get().getBasicProfile();
+                                        helper.people();
+                                        console.log('ID: ' + profile.getId());
+                                        console.log('Name: ' + profile.getName());
+                                        console.log('Image URL: ' + profile.getImageUrl());
+                                        console.log('Email: ' + profile.getEmail());
+                                    }
+                            
+                                    auth2.isSignedIn.listen(updateSignIn);
+                                    auth2.then(updateSignIn());
+                                });
+                    });
+//                    if (auth2.isSignedIn.get()) {
+//                        var profile = auth2.currentUser.get().getBasicProfile();
+//                        console.log('ID: ' + profile.getId());
+//                        console.log('Name: ' + profile.getName());
+//                        console.log('Image URL: ' + profile.getImageUrl());
+//                        console.log('Email: ' + profile.getEmail());
+//                    }
+
+                    gapi.signin2.render('signin-button', {
+                        scope: 'https://www.googleapis.com/auth/plus.login',
+                        fetch_basic_profile: false});
+//                    gapi.auth2.init({fetch_basic_profile: false,
+//                        scope: 'https://www.googleapis.com/auth/plus.login'}).then(
+//                            function () {
+//                                console.log('init');
+//                                auth2 = gapi.auth2.getAuthInstance();
+//                                auth2.isSignedIn.listen(updateSignIn);
+//                                auth2.then(updateSignIn());
+//                            });
+//                });
+                });
+            }
+        </script></head>
+
+    <body>
+        <div id="kanbanToolbar" class="ui-widget-header ui-corner-all">&nbsp;</div>
+        <div id="menu">
+            <label for="table">Table: </label>
+            <select id="table">
+                <option value="furniture">Furniture</option>
+                <option value="monitor">Monitor</option>
+                <option value="quality_report">Quality Report</option>
+            </select>
+            <label for="search">Search: </label>
+            <select id="search">
+                <option value="Unclosed">Unclosed</option>
+                <option value="OverdueAgreed" selected="selected">Overdue Agreed</option>
+                <option value="My Assigned">My Assigned</option>
+                <option value="All">All</option>
+            </select>
+            <label for="state_field">State Field: </label>
+            <select id="state_field">
+                <option value="performer_state">Performer State</option>
+                <option value="requester_state">Requester State</option>
+                <option value="state">State</option>
+            </select>
+            <label for="autoColumns">Auto Columns: </label>
+            <select id="autoColumns">
+                <option value="true">True</option>
+                <option selected="" value="false">False</option>
+            </select><br>
+            <label for="columns">Columns: </label>
+            <!--             <input id="columns" type="text" size='30' value="[]"><br> -->
+            <select name="columns" id="columns">
+                <option value='["Choose one", "Agreed", "Counter Offer", "Declined", "Pending", "Completed"]'>Performer: ["Agreed", "Counter Offer", "Declined", "Pending", "Completed"]</option>
+                <option value='["Preparation", "Negotiation", "Performance", "Completed"]'>State: ["Preparation", "Negotiation", "Performance", "Completed"]</option>
+                <option value='["Assigned", "Reassigned", "Counter Offer", "Agreed", "Open", "Cancelled/Closed", "Completed"]'>Requester: ["Assigned", "Reassigned", "Counter Offer", "Agreed", "Open", "Cancelled/Closed", "Completed"]</option>
+            </select><br>
+            <label for="user">User: </label>
+            <input id="user" type="text" size="16" value="tribsupp">
+            <!--            <select id="user"></select>-->
+            <label for="password">Password: </label>
+            <input id="password" type="text" size="16" value="Chuffed1">
+            <button id="load" tabindex="1">Load</button><br>
+            <label for="fields" id="fields_label">Fields: </label><br>
+            <select id="fields" multiple="multiple">
+                <option selected="" value="summary">Summary</option>
+                <option selected="" value="performer_state">Performer State</option>
+                <option selected="" value="description">Description</option>
+                <option selected="" value="id">Id</option>
+                <option selected="" value="state">State</option>
+                <option selected="" value="assigned_to">Assigned To</option>
+                <option selected="" value="requester_state">Requester State</option>
+                <option selected="" value="agreed_date">Agreed Date</option>
+                <option selected="" value="provisional_agreed_date">Provisional Agreed Date</option>
+                <option selected="" value="_1880_full_name">Full Name</option>
+            </select>
+            <!-- <input id="fields" type="text" size="30" value='["summary", "performer_state", "description", "id", "state", "assigned_to"]'> -->
+            <div id="gConnect" style="float:right;">
+                <div id="signin-button"></div>
+            </div>
+            <div id="authOps">
+                <button id="signOut" onclick="auth2.signOut()">Sign Out</button>
+                <button id="disconnect" >Disconnect your Google account from this app</button>
+                <div id="profile" style="float:right; margin-top: -40px;"></div>
+
+
+
+            </div>
+
+            <div id="gConnect">
+                <div id="signin-button"></div>
+            </div>
+            <a class="close" id="closeSettings" href="#">X</a>
+            <div id="profile">
+
+            </div>
+        </div>
+        <ul id="main">
+
+        </ul>
+        <div id="dialog">
+            <!--            <form name="ewform" id="ewform"></form>-->
+            <iframe id="ewFrame" src="" width="100%" height="100%">
+                
+            </iframe>
+            <form id="edit" name="edit" style="display: none;">
+                <fieldset>
+                    <legend>Edit Card</legend>
+                    <!--                    <label for="id">Id:</label>
+                                        <input type="text" name="id" id="id"><br>                
+                                        <label for="summary">Summary:</label>
+                                        <input type="text" name="summary" id="summary"><br>
+                                        <label for="description">Description:</label>
+                                        <textarea name="description" id="description"></textarea><br>
+                    
+                                         <select name="performer_state" id="performer_state">
+                                            <option selected="" value="Agreed">Agreed</option>
+                                            <option selected="" value="Pending">Pending</option>
+                                            <option value="Completed">Completed</option>
+                                            <option value="Counter Offer">Counter Offer</option>
+                                            <option value="Declined">Declined</option>
+                                        </select><br> 
+                                        <label for="assigned_to">Assigned To:</label>
+                                        <select name="assigned_to" id="assigned_to">
+                                        </select><br>-->
+                </fieldset>
+            </form>
+        </div>
+        <div id="log">
+            <h1>Log</h1>
+            <h2>Authentication Logs</h2>
+            <pre id="authResult"></pre>
+            <a class="close" href="#">X</a>
+
+        </div>
+    </body>
+</html>

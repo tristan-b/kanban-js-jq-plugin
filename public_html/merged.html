@@ -1,0 +1,1374 @@
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+        <script src="https://code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
+        <script>
+
+            (function (jQuery, window, document, undefined) {
+                "use strict";
+                var states = {performer_state: [
+                        "Choose one",
+                        "Agreed",
+                        "Counter Offer",
+                        "Pending",
+                        "Declined",
+                        "Revoke No Agreement",
+                        "Requester Revoked",
+                        "Cancelled/Closed",
+                        "Completed"],
+                    requester_state: [
+                        "Open",
+                        "Assigned",
+                        "Agreed",
+                        "Counter Offer",
+                        "Agreed To Counter",
+                        "Accepted as Completed",
+                        "Pending",
+                        "Closed",
+                        "Cancelled/Closed",
+                        "Reassigned",
+                        "C/Offer Declined",
+                        "Declined",
+                        "Reject",
+                        "Revoke No Agreement",
+                        "New Assigned",
+                        "Completed"],
+                    state: [
+                        "Preparation",
+                        "Negotiation",
+                        "Performance",
+                        "Transition",
+                        "Pending",
+                        "Cancelled/Closed",
+                        "Rejected",
+                        "Revoke No Agreement",
+                        "Requester Revoked",
+                        "Completed",
+                        "Closed"
+                    ]};
+                // undefined is used here as the undefined global variable in ECMAScript 3 is
+                // mutable (ie. it can be changed by someone else). undefined isn't really being
+                // passed in so we can ensure the value of it is truly undefined. In ES5, undefined
+                // can no longer be modified.
+
+                // window and document are passed through as local variable rather than global
+                // as this (slightly) quickens the resolution process and can be more efficiently
+                // minified (especially when both are regularly referenced in your plugin).
+                var dragCheck = false;
+                // Create the defaults once
+                var pluginName = "Kanban",
+                        defaults = {
+                            user: "tribsupp",
+                            password: "Chuffed1",
+                            cols: ["Counter Offer", "Agreed", "Pending", "Declined", "Completed"],
+                            fields: ["summary", "performer_state", "description", "id", "state", "assigned_to"],
+                            table: "furniture",
+                            search: "Unclosed",
+                            columnField: "performer_state",
+                            autoColumns: "false"
+                        };
+                // The actual plugin constructor
+                function Kanban(element, options) {
+                    this.element = element;
+                    // jQuery has an extend method which merges the contents of two or
+                    // more objects, storing the result in the first object. The first object
+                    // is generally empty as we don't want to alter the default options for
+                    // future instances of the plugin
+                    this.settings = jQuery.extend({}, defaults, options);
+                    this._defaults = defaults;
+                    this._name = pluginName;
+                    this.columns = [];
+                    this.init();
+                }
+
+                // Avoid Plugin.prototype conflicts
+                jQuery.extend(Kanban.prototype, {
+                    init: function () {
+                        // Place initialization logic here
+                        // You already have access to the DOM element and
+                        // the options via the instance, e.g. this.element
+                        // and this.settings
+                        // you can add more functions like the one below and
+                        // call them like so: this.yourOtherFunction(this.element, this.settings).
+                        var self = this;
+                        this.form = {};
+                        this.form.summary = jQuery("#summary");
+                        this.form.description = jQuery("#description");
+                        // this.form.performer_state = jQuery("#performer_state");
+                        this.form.assigned_to = jQuery("#assigned_to");
+                        this.form.form = jQuery("#edit");
+                        // this.form.form.find("fieldset").append(setupStateList(self.settings.columnField, states[self.settings.columnField]));
+                        this.dialog = jQuery("#dialog").dialog({
+                            autoOpen: false,
+                            height: "800",
+                            width: "80%",
+                            modal: true,
+                            show: {
+                                effect: "blind",
+                                duration: 1000
+                            },
+                            hide: {
+                                effect: "blindt",
+                                duration: 1000
+                            },
+                            title: "<- Edit Card ->",
+                            buttons: {
+                                "Save Card": function () {
+                                    var id = jQuery("#id").val();
+//                        logit("Id: " + id);
+                                    var cardElem = jQuery("#" + id + "");
+                                    //var card = cardElem.data("card");
+                                    //logit("Card Perf State: " + card.performer_state + " Perf State Field Val: " + jQuery("#performer_state").val());
+//                        if (card[self.settings.columnField]!== jQuery("#"+self.settings.columnField+"").val()) {
+//                            logit("Not equals states!");
+//                            jQuery("#" + card[self.settings.columnField] + "").append(cardElem.detach());
+//                            cardElem.css({
+//                                position: "relative",
+//                                top: "0px",
+//                                left: "0px"
+//                            });
+//                        }
+                                    self.saveCard(id, self.form.form, cardElem);
+                                    self.dialog.dialog("close");
+                                },
+                                Cancel: function () {
+                                    self.dialog.dialog("close");
+                                }
+                            },
+                            close: function () {
+                                jQuery("form")[0].reset();
+                                self.dialog.dialog("close");
+                            }
+                        });
+                        if (this.settings.autoColumns === "false") {
+                            this.setupColumns(this.settings.cols);
+                        }
+                        this.makeCards(this.settings.cards);
+                    },
+                    setupColumns: function (colsArr) {
+                        for (var i = 0; i < colsArr.length; i++) {
+                            this.columns.push(this.makeColumn(colsArr[i]))
+                        }
+                        var colWidths = calcColumnWidths(colsArr.length);
+                        jQuery(".kbstate").css({"width": colWidths + "px"});
+                    },
+                    makeColumn: function (title) {
+                        var self = this;
+                        var heading = jQuery("<h1>" + title + "<a href='#' class='new'>+</a></h1>");
+                        heading.on("click", function () {
+                            var url = "https://katara.techtime.org/gui2/login.jsp?keyID=0&kb=CX1&";
+                            url += "user=devadmin&passwd=Chuffed1&State=New:furniture&table=furniture&gui=no&";
+                            url += "field=description:preset%20from%20hotlinks";
+
+                            // document.getElementById("ewFrame").src = url;
+//                    var iFrm = document.createElement("iframe");
+                            //                  jQuery("#dialog").append(iFrm);
+                            // iFrm.src = url;
+                            // jQuery("#dialog").empty().html("<iframe src='" + url + "' width='100%' height='100%'></iframe>");
+//                jQuery("#ewFrame").attr("src", url);
+//                self.dialog.dialog("open");
+                            jQuery.ajax(url, {
+                                "method": "POST",
+                                success: function (message) {
+                                    self.dialog.empty().html(message);
+                                    self.dialog.dialog("open");
+                                }
+                            });
+
+                        });
+                        var el = jQuery("<li/>", {
+                            "class": "kbstate",
+                            id: title.replace(" ", "_"),
+                            click: function () {
+                                jQuery(this).toggleClass("test");
+                            }
+                        }).append(heading).appendTo(this.element);
+                        el.data("state", title);
+                        el.droppable({
+                            accept: ".card",
+                            drop: function (event, ui) {
+                                var dropped = ui.draggable;
+                                logit(dropped.data("card"));
+                                // dropped.detach().appendTo(el);
+//                    el.append(dropped.detach());
+//                    dropped.css({"position": "relative", "top": "0px", "left": "0px"});
+                                self.updateCard(dropped, el);
+                                dragCheck = false;
+                            }
+                        });
+                        el.resizable({
+                        });
+
+                        return el;
+                    },
+                    makeCards: function (recordsArr) {
+                        // some logic
+                        var self = this;
+                        for (var i = 0; i < recordsArr.length; i++) {
+                            //logit("Record iteration #: "+i);
+                            self.makeCard(recordsArr[i]);
+                            //            console.log(recordsArr[i]);
+                        }
+
+                    },
+                    makeCard: function (card) {
+                        var self = this;
+                        var elem = jQuery("<div/>", {
+                            "class": "card",
+                            id: card.id
+
+                        })
+                        elem.addClass("" + card._1880_full_name.replace(" ", "_") + "");
+
+                        elem.on("mouseup", function () {
+                            if (dragCheck === true) {
+                                return;
+                            }
+                            var card = jQuery(this).data("card");
+                            //self.loadExpandedCard(card);
+                            var hl = jQuery(this).find(".hotlink").data("link");
+                            // jQuery("#ewFrame").attr("src", url);
+                            console.log(hl);
+                            // document.getElementById("ewFrame").src = url;
+//                    var iFrm = document.createElement("iframe");
+                            //                  jQuery("#dialog").append(iFrm);
+                            // iFrm.src = url;
+                            //jQuery("#dialog").empty().html("<iframe src='" + hl + "' width='100%' height='100%'></iframe>");
+                            //jQuery("#dialog").dialog("open");
+                            //return false;
+//                jQuery("#ewFrame").attr("src", hl);
+                            jQuery.ajax(hl, {
+                                "method": "POST",
+                                success: function (message) {
+                                    self.dialog.empty().html(message);
+                                    self.dialog.dialog("open");
+                                }
+                            });
+                            self.dialog.dialog("open");
+
+                            //      self.dialog.dialog("open");
+                            //jQuery(this).toggleClass("test");
+                        });
+                        var hotlink = "https://katara.techtime.org/gui2/login.jsp?keyID=0";
+                        hotlink += "&kb=CX1&user=devadmin&passwd=Chuffed1&State=Edit:furniture&";
+                        hotlink += "record=" + card.id + "&record_access=edit";
+                        for (var p in card) {
+                            if (card.hasOwnProperty(p) && p == "summary") {
+                                elem.append("<p><a class='hotlink' data-link='" + hotlink + "' href='#'>" + card[p] + "</a></p>");
+                            }
+
+                            if (p == "_1880_full_name") {
+                                elem.append("<p class='name'>" + card[p] + "</p>");
+                            }
+                        }
+                        if (typeof card[self.settings.columnField] !== "undefined") {
+                            jQuery("#" + card[self.settings.columnField].replace(" ", "_") + "").append(elem);
+                            //            logit("State field: " + card[self.settings.columnField]);
+                        } else {
+
+                        }
+                        elem.data("card", card);
+
+                        elem.draggable({
+                            //    helper: "clone",
+                            helper: function () {
+                                var helper = jQuery("<div class='card'><p>" + card.summary + "</p></div>");
+
+                                return helper;
+                            },
+                            appendTo: "body",
+                            start: function () {
+                                elem.data("prev", elem.prev());
+                                dragCheck = true;
+                                // elem.prev(".card")
+                            }
+                        })
+                    },
+                    updateCard: function (elem, droppable) {
+                        var card = elem.data("card");
+                        var parent = elem.closest(".kbstate");
+                        // var state = parent.data("state");
+                        var state = droppable.data("state");
+                        var recId = card.id;
+                        var self = this;
+//            logit("Id: " + recId + " State: " + state);
+                        var url = "https://katara.techtime.org/ewws/EWUpdate&$KB=CX1" +
+                                "&$table=" + self.settings.table + "&$login=devadmin&$password=Chuffed1" +
+                                "&$lang=en&id=" + recId + "&" + this.settings.columnField + "=" + state;
+                        jQuery.ajax(url, {
+                            success: function (message) {
+                                logit(message);
+                            },
+                            statusCode: {
+                                404: function (ajax, statusText) {
+                                    elem.append("page not found");
+                                    var originalState = card[self.settings.columnField];
+                                    jQuery("#" + originalState + "").append(elem);
+                                    elem.css({top: "0px", left: "0px", position: "pelative"});
+                                },
+                                400: function (ajax, statusText) {
+                                    // elem.append("<p>Error: " + ajax.responseText + "</p>");
+                                    var originalState = card[self.settings.columnField];
+                                    jQuery("#" + originalState + "").append(elem);
+                                    elem.css({top: "0px", left: "0px", position: "pelative"});
+                                },
+                                200: function (message) {
+                                    if (state != parent.data("state")) {
+                                        droppable.append(elem.detach());
+                                        elem.css({"position": "relative", "top": "0px", "left": "0px"});
+                                    }
+                                },
+                                403: function (ajax, statusText) {
+                                    // elem.append("<p>Error: " + ajax.responseText + "</p>");
+                                    var originalState = card[self.settings.columnField];
+                                    droppable.insertAfter(droppable.data("prev"));
+                                    // jQuery("#" + originalState + "").append(elem);
+                                    // elem.css({top: "0px", left: "0px", position: "pelative"});
+                                },
+                                408: function (ajax, statusText) {
+                                    // elem.append("<p>Error: " + ajax.responseText + "</p>");
+                                    var originalState = card[self.settings.columnField];
+                                    droppable.insertAfter(droppable.data("prev"));
+                                    // jQuery("#" + originalState + "").append(elem);
+                                    // elem.css({top: "0px", left: "0px", position: "pelative"});
+                                },
+                                409: function (ajax, statusText) {
+                                    // elem.append("<p>Error: " + ajax.responseText + "</p>");
+                                    var originalState = card[self.settings.columnField];
+                                    droppable.insertAfter(droppable.data("prev"));
+                                    //jQuery("#" + originalState + "").append(elem);
+                                    // elem.css({top: "0px", left: "0px", position: "pelative"});
+                                },
+                                500: function (ajax, statusText) {
+                                    // elem.append("<p>Error: " + ajax.responseText + "</p>");
+                                    var originalState = card[self.settings.columnField];
+                                    droppable.insertAfter(droppable.data("prev"));
+                                    //jQuery("#" + originalState + "").append(elem);
+                                    //elem.css({top: "0px", left: "0px", position: "pelative"});
+                                }
+
+                            }
+                        })
+                    },
+                    saveCard: function (id, form, elem) {
+                        var self = this;
+                        var card = elem.data("card");
+                        //card[self.settings.columnField] = form.find("#"+self.settings.columnField+"").val();
+                        // var parent = elem.closest(".kbstate");
+                        var url = "https://katara.techtime.org/ewws/EWUpdate&$KB=CX1" +
+                                "&$table=" + self.settings.table + "&$login=devadmin&$password=Chuffed1" +
+                                "&$lang=en&id=" + id;
+                        var newState = false;
+                        form.find("input, select, text").each(function (i, item) {
+                            var fname = jQuery(this).attr("id");
+                            var val = jQuery(this).val();
+                            if (fname == self.settings.columnField) {
+                                //              logit("State field:"+fname+" State:"+val);
+                                newState = val;
+                            }
+                            if (fname == "summary") {
+                                elem.empty().append("<p>" + val + "</p>");
+                            }
+                            if (fname.search(/(date)/) && val != "") {
+                                //var d =  Date.parse(val);
+                                //console.log(d);
+                                //val = d.toString('yyyy-M-d HH mm ss');
+                            }
+                            url += "&" + fname + "=" + encodeURIComponent(val);
+                        });
+                        logit(url);
+//            var url = "https://katara.techtime.org/ewws/EWUpdate&$KB=CX1" +
+//                    "&$table="+self.settings.table+"&$login=devadmin&$password=Chuffed1" +
+//                    "&$lang=en&id=" + id + "&summary=" + encodeURIComponent(formFields.summary.val()) +
+//                    "&description=" + encodeURIComponent(formFields.description.val()) +
+//                    "&performer_state=" + encodeURIComponent(formFields.performer_state.val())+
+//                    "&assigned_to="+encodeURIComponent(formFields.assigned_to);
+                        jQuery.ajax(url, {
+                            success: function (message) {
+                                //               logit(message);
+                            },
+                            statusCode: {
+                                404: function (ajax, statusText) {
+                                    elem.append("page not found");
+                                    var originalState = card[self.settings.columnField];
+                                    jQuery("#" + originalState + "").append(elem);
+                                    elem.css({top: "0px", left: "0px", position: "pelative"});
+                                },
+                                400: function (ajax, statusText) {
+                                    // elem.append("<p>Error: " + ajax.responseText + "</p>");
+                                    var originalState = card[self.settings.columnField];
+                                    jQuery("#" + originalState + "").append(elem);
+                                    elem.css({top: "0px", left: "0px", position: "pelative"});
+                                },
+                                200: function (message) {
+                                    // droppable.append(elem.detach());
+                                    var stateCol = jQuery("#" + self.settings.columnField + "").val();
+                                    logit("State col: " + self.settings.columnField);
+                                    jQuery("#" + newState.replace(" ", "_") + "").append(elem);
+                                    ;
+                                    //     elem.css({"position": "relative", "top": "0px", "left": "0px"});
+                                },
+                                403: function (ajax, statusText) {
+                                    // elem.append("<p>Error: " + ajax.responseText + "</p>");
+                                    var originalState = card[self.settings.columnField];
+                                    jQuery("#" + originalState + "").append(elem);
+                                    elem.css({top: "0px", left: "0px", position: "pelative"});
+                                },
+                                408: function (ajax, statusText) {
+                                    // elem.append("<p>Error: " + ajax.responseText + "</p>");
+                                    var originalState = card[self.settings.columnField];
+                                    jQuery("#" + originalState + "").append(elem);
+                                    elem.css({top: "0px", left: "0px", position: "pelative"});
+                                },
+                                409: function (ajax, statusText) {
+                                    // elem.append("<p>Error: " + ajax.responseText + "</p>");
+                                    var originalState = card[self.settings.columnField];
+                                    jQuery("#" + originalState + "").append(elem);
+                                    elem.css({top: "0px", left: "0px", position: "pelative"});
+                                },
+                                500: function (ajax, statusText) {
+                                    // elem.append("<p>Error: " + ajax.responseText + "</p>");
+                                    var originalState = card[self.settings.columnField];
+                                    jQuery("#" + originalState + "").append(elem);
+                                    elem.css({top: "0px", left: "0px", position: "pelative"});
+                                }
+
+                            }
+                        })
+                    },
+                    loadExpandedCard: function (card) {
+                        for (var i in card) {
+                            if (card.hasOwnProperty(i)) {
+                                jQuery("#" + i + "").val(card[i]);
+                                //                logit("Prop: "+i+" Card val: "+card[i]+" Field val: "+jQuery("#" + i + "").val());
+                            }
+                        }
+
+                    },
+                    destroy: function () {
+                        this.element.empty();
+                    }
+                });
+                // A really lightweight plugin wrapper around the constructor,
+                // preventing against multiple instantiations
+                jQuery.fn[ pluginName ] = function (options) {
+                    return this.each(function () {
+                        // if (!jQuery.data(this, "plugin_" + pluginName)) {
+                        jQuery.data(this, "plugin_" + pluginName, new Kanban(this, options));
+                        //}else{
+                        // jQuery.data(this, "plugin_" + pluginName);
+                        //}
+                    });
+                };
+                function calcColumnWidths(numColumns) {
+                    var contWidth = jQuery("#main").width();
+                    var evenSplitWidth = contWidth / numColumns;
+                    return (evenSplitWidth - 10);
+                }
+                function setupStateList(listName, statesArr) {
+                    var selectStr = "<label for='" + listName + "' class='state_field'>" + listName + ":</label>";
+                    selectStr += "<select name='" + listName + "' id='" + listName + "' class='state_field'>";
+                    for (var i = 0; i < statesArr.length; i++) {
+                        selectStr += "<option value='" + statesArr[i] + "'>" + statesArr[i] + "</option>";
+                    }
+                    selectStr += "</select>";
+                    return selectStr;
+                }
+                function iterateRestLines(numRecs, restLinesArr) {
+                    var i = 0;
+                    var cards = [];
+                    while (i < numRecs) {
+                        var endNumericPadding = 2;
+
+                        if (i > (9)) {
+                            endNumericPadding = 3;
+                        }
+                        if (i > 99) {
+                            endNumericPadding = 4;
+                        }
+                        if (i > 999) {
+                            endNumericPadding = 5;
+                        }
+                        var rec = {};
+                        while (restLinesArr[0].search("/(_" + i + "=)/")) {
+                            var card = {};
+                            var lineKeyVal = restLinesArr.shift();
+                            var vals = lineKeyVal.split("=");
+                            var fieldNameFirstTrim = vals[0].substr(7);
+                            // logit(fieldNameFirstTrim);
+                            var fieldNameFinal = fieldNameFirstTrim.substr(0, fieldNameFirstTrim.length - endNumericPadding);
+                            if (vals[1]) {
+                                rec[fieldNameFinal] = vals[1].replace(/'/g, "").replace(";", "");
+                            }
+                        }
+                        cards.push(rec);
+                    }
+                    return cards;
+                }
+                function calculateCardHeight(column) {
+
+                }
+
+            })(jQuery, window, document);
+            (function () {
+                var cols = ["Agreed", "Pending", "Performance", "Completed"];
+                for (var i = 0; i < cols.length; i++) {
+                    var cont = document.createElement("div");
+                }
+            }());
+
+            var api = (function () {
+                var apiConfig = {user: "",
+                    pass: "",
+                    apiurl: "",
+                    ewkb: "",
+                    fieldsArr: [],
+                    search: "",
+                    table: ""
+                };
+                var endPoints = {
+                    "search": "EWSearch",
+                    "create": "EWCreate",
+                    "update": "EWUpdate",
+                    "select": "EWSelect",
+                    "delete": "EWDelete"
+                };
+
+                function ajaxRequest(url, method, dataToPost) {
+                    var httpRequest;
+                    if (typeof ActiveXObject != 'undefined') {
+                        httpRequest = new ActiveXObject('Microsoft.XMLHTTP');
+                    }
+                    else if (typeof XMLHttpRequest != 'undefined') {
+                        httpRequest = new XMLHttpRequest();
+                    }
+
+                    if (httpRequest) {
+                        httpRequest.open(method, url, false);
+                        if (method === "POST") {
+                            httpRequest.setRequestHeader(
+                                    'Content-Type', 'application/x-www-form-urlencoded');
+                            httpRequest.send(dataToPost);
+                        } else {
+                            httpRequest.send();
+                        }
+
+                        return httpRequest;
+                    }
+                    else {
+                        return void 0;
+                    }
+                }
+                function buildRequestUrl(action) {
+                    /*
+                     * http://localhost:8080/ewws/EWSearch?
+                     jQueryKB=Demo&$login=admin&$password=qwerty&
+                     jQuerytable=case&$lang=en&search=Closed%20Cases&field=summary&field=priority
+                     */
+                    var apiAction = endPoints[action];
+
+                    var urlStr = apiConfig.apiurl + apiAction + "?"
+                    urlStr += "$KB=" + apiConfig.ewkb + "&$login=" + apiConfig.user + "&$password=" + apiConfig.pass + "&$table=" + apiConfig.table + "&$lang=en";
+                    return urlStr;
+                }
+                function parseEwRestResponse(responseString, fieldsArr) {
+                    var finalRecords = [];
+                    var lines = responseString.split(";\n");
+                    var numRecs = lines.shift().split("=")[1];
+                    numRecs = parseInt(numRecs.replace(/'/g, ""));
+                    logit("Num recs: " + numRecs);
+                    var endNumericPadding = 2;
+                    var i = 0;
+                    var recObj = {};
+                    while (i < numRecs) {
+                        if (i > (9)) {
+                            endNumericPadding = 3;
+                        }
+                        if (i > 99) {
+                            endNumericPadding = 4;
+                        }
+                        if (i > 999) {
+                            endNumericPadding = 5;
+                        }
+
+
+                        //if(lines[0].search('/(_'+i+'=)/')){
+                        // alert("True");
+//            console.log("I: " + i);
+                        var valsStr = lines.shift();
+                        var vals = valsStr.split("=");
+
+                        var recNum = parseInt(vals[0].substr(vals[0].length - (endNumericPadding - 1)));
+                        if (recNum == i) {
+//                logit("Still on same rec!");
+                            var fieldNameFirstTrim = vals[0].substr(7);
+                            // logit(fieldNameFirstTrim);
+                            var fieldNameFinal = fieldNameFirstTrim.substr(0, fieldNameFirstTrim.length - endNumericPadding);
+                            if (fieldNameFinal == "i") {
+//                    logit("Padding: " + endNumericPadding);
+                                logit("Final field name: " + fieldNameFinal + " I: " + i);
+//                    logit(valsStr)
+                            }
+
+                            if (vals[1]) {
+                                //         logit("Final field name: " + fieldNameFinal + " I: " + i + "Val: " + vals[1]);
+                                recObj[fieldNameFinal] = vals[1].replace(/'/g, "").replace(";", "");
+                            }
+                        } else {
+                            //     logit("Advancing record num");
+                            finalRecords.push(recObj);
+                            recObj = {};
+                            var fieldNameFirstTrim = vals[0].substr(7);
+                            // logit(fieldNameFirstTrim);
+                            var fieldNameFinal = fieldNameFirstTrim.substr(0, fieldNameFirstTrim.length - endNumericPadding);
+                            if (fieldNameFinal == "i") {
+                                //       logit("Padding: " + endNumericPadding);
+                                //         logit("Final field name: " + fieldNameFinal + " I: " + i);
+                                ////         logit(valsStr)
+                            }
+
+                            if (vals[1]) {
+                                //            logit("Final field name: " + fieldNameFinal + " I: " + i + "Val: " + vals[1]);
+                                recObj[fieldNameFinal] = vals[1].replace(/'/g, "").replace(";", "");
+                            }
+                            i++;
+                        }
+
+//                    }else{
+//                        alert("Moing!");
+//                        //break;
+//                    }
+
+
+                    }
+                    return finalRecords;
+//            for (var i = 0; i < lines.length; i++){
+//                var keyVal = lines[i].split("=");
+//                finalValues[keyVal[0]] = keyVal[1];
+//            }
+                    //return finalValues;
+                }
+                function getFieldsAsArray() {
+                    var reformattedArray = apiConfig.fieldsArr.map(function (obj) {
+                        return obj.name;
+                    });
+                    return reformattedArray;
+                }
+                var example = "EWREST_length = '4';\n";
+                example += "EWREST_id_0='355';\n";
+                example += "EWREST_customer_login_0='admin';\n";
+                example += "EWREST_type_0='Case\r\n';\n";
+                example += "EWREST_id_1='117';\n";
+                example += "EWREST_customer_login_1='johnl';\n";
+                example += "EWREST_type_1='Case';\n";
+                example += "EWREST_id_2='83';\n";
+                example += "EWREST_customer_login_2='admin';\n";
+                example += "EWREST_type_2='Case';\n";
+                example += "EWREST_id_3='82';\n";
+                example += "EWREST_customer_login_3='admin';\n";
+                example += "EWREST_type_3='Case';\n";
+                example += "EWREST_id_4='83';\n";
+                example += "EWREST_customer_login_4='admin';\n";
+                example += "EWREST_type_4='Case';\n";
+                example += "EWREST_id_5='82';\n";
+                example += "EWREST_customer_login_5='admin';\n";
+                example += "EWREST_type_5='Case';\n";
+
+                return{
+                    setupApi: function (configObj) {
+                        for (var i in configObj) {
+                            if (typeof apiConfig[i] != "undefined") {
+                                apiConfig[i] = configObj[i];
+                            }
+                        }
+                        return this;
+                    },
+                    setCredentials: function (u, p) {
+                        apiConfig.user = u;
+                        apiConfig.pass = p;
+                    },
+                    setApiLocation: function (apiBaseUrl) {
+                        apiConfig.apiurl = apiBaseUrl;
+                    },
+                    setKb: function (kb) {
+                        apiConfig.ewkb = kb;
+                    },
+                    setTable: function (tableName) {
+                        apiConfig.table = tableName;
+                    },
+                    setSearch: function (searchName) {
+                        apiConfig.search = searchName;
+                    },
+                    addFields: function (fieldsArr) {
+                        for (var i = 0; i < fieldsArr.length; i++) {
+                            apiConfig.fields.push(fieldsArr[i]);
+                        }
+                    },
+                    resetFields: function () {
+                        apiConfig.fields.length = 0;
+                    },
+                    searchTable: function (searchObj) {
+                        var url = buildRequestUrl("search");
+                        //var fields = apiConfig.fieldsArr.join("&field=")
+                        var fieldsArr;
+                        if (typeof apiConfig.fieldsArr[0].name == "undefined") {
+                            fieldsArr = apiConfig.fieldsArr;
+                        } else {
+                            fieldsArr = getFieldsAsArray();
+                        }
+                        var fields = fieldsArr.join("&field=");
+                        url += "&search=" + apiConfig.search + "&field=" + fields;
+                        var ajaxReq = ajaxRequest(url, "GET");
+                        var recs = parseEwRestResponse(ajaxReq.responseText);
+                        //     console.log(recs);
+                        return recs;
+                        //callback.call(this, ajaxReq);
+                    },
+                    updateRecord: function (keyValsObject) {
+                        var url = buildRequestUrl("update");
+                        for (var i in keyValsObject) {
+                            if (keyValsObject.hasOwnProperty(i)) {
+                                url += "&" + encodeURIComponent(i) + "=" + encodeURIComponent(keyValsObject[i]);
+                            }
+                        }
+                        console.log(url);
+                        var ajaxReq = ajaxRequest(url, "POST");
+                        console.log(ajaxReq);
+
+
+                    },
+                    test: function (testStr) {
+                        if (arguments.length > 0) {
+                            var res = parseEwRestResponse(example);
+                        } else {
+                            var res = parseEwRestResponse(example);
+                        }
+                        //    console.log(res);
+
+                        return res;
+                    }
+                }
+            });
+            api.form = (function () {
+                var fieldSettings = [],
+                        fieldElems = [],
+                        form;
+                return{
+                    addConfig: function (configObj) {
+
+                    },
+                    setupForm: function () {
+
+                    }
+                }
+            });
+//var ew = new api();
+//ew.setupApi({ewkb: "CX1", "user": "devadmin", "pass": "Chuffed1", "table": "furniture", "search": "OverdueAgreed",
+//    "apiurl": "https://katara.techtime.org/ewws/", "fieldsArr" : ["summary", "description", "performer_state", "assigned_to"]});
+//ew.searchTable();
+            /*!
+             * jQuery lightweight plugin boilerplate
+             * Original author: @ajpiano
+             * Further changes, comments: @addyosmani
+             * Licensed under the MIT license
+             */
+
+// the semi-colon before the function invocation is a safety
+// net against concatenated scripts and/or other plugins
+// that are not closed properly.
+            ;
+            (function (jQuery, window, document, undefined) {
+
+                var pluginName = "Users";
+                // Create the defaults once
+                var defaults = {
+                    table: "Contacts.Employees",
+                    search: "KanbanUsers",
+                    fields: ["_login"]
+                };
+
+                // The actual plugin constructor
+                function Users(element, options) {
+                    this.element = element;
+
+                    // jQuery has an extend method that merges the
+                    // contents of two or more objects, storing the
+                    // result in the first object. The first object
+                    // is generally empty because we don't want to alter
+                    // the default options for future instances of the plugin
+                    this.options = jQuery.extend({}, defaults, options);
+
+                    this._defaults = defaults;
+                    //     this._name = pluginName;
+
+                    this.init();
+                }
+
+                Users.prototype = {
+                    init: function () {
+                        // Place initialization logic here
+                        // You already have access to the DOM element and
+                        // the options via the instance, e.g. this.element
+                        // and this.options
+                        // you can add more functions like the one below and
+                        // call them like so: this.yourOtherFunction(this.element, this.options).
+                        this.getUsers(this.options)
+                    },
+                    addUsersToSelect: function (userObjArr, selectEl) {
+                        var el = jQuery(selectEl);
+                        for (var i = 0; i < userObjArr.length; i++) {
+                            el.append('<option value="' + userObjArr[i]._login + '">' + userObjArr[i]._login + '</option>');
+                        }
+                    },
+                    getUsers: function (settings) {
+                        var self = this;
+                        // some logic
+                        var fields = settings.fields.join("&field=")
+                        var url = "https://katara.techtime.org/ewws/EWSearch?" +
+                                "$KB=CX1&$login=devadmin&$password=Chuffed1&" +
+                                "$table=" + settings.table + "&$lang=en&search=" + settings.search + "&field=" + fields;
+                        jQuery.ajax(url, {
+                            success: function (message) {
+                                //          logit(message);
+                                var users = self.parseEwRestResponse(message);
+                                self.addUsersToSelect(users, self.element);
+                                //      logit(users);
+                            }
+                        });
+                    },
+                    parseEwRestResponse: function (responseString) {
+                        var finalRecords = [];
+                        var lines = responseString.split("\n");
+                        var numRecs = lines.shift().split("=")[1];
+                        numRecs = parseInt(numRecs.replace("'", ""));
+                        //logit(numRecs);
+                        var fieldsPerRecord = parseInt(lines.length / numRecs);
+                        //logit("Fields per rec: "+fieldsPerRecord);
+                        var endNumericPadding = 2;
+
+                        for (var i = 0; i < numRecs; i++) {
+                            if (i > 9) {
+                                endNumericPadding = 3;
+                            }
+                            if (i > 99) {
+                                endNumericPadding = 4;
+                            }
+                            if (i > 999) {
+                                endNumericPadding = 5;
+                            }
+                            var recObj = {};
+                            for (var f = 0; f < fieldsPerRecord; f++) {
+                                var valsStr = lines.shift();
+                                var vals = valsStr.split("=");
+                                var fieldNameFirstTrim = vals[0].substr(7);
+                                // logit(fieldNameFirstTrim);
+                                var fieldNameFinal = fieldNameFirstTrim.substr(0, fieldNameFirstTrim.length - endNumericPadding);
+                                //logit(fieldNameFinal);
+                                recObj[fieldNameFinal] = vals[1].replace(/'/g, "").replace(";", "");
+                            }
+                            finalRecords.push(recObj);
+                        }
+                        return finalRecords;
+//            for (var i = 0; i < lines.length; i++){
+//                var keyVal = lines[i].split("=");
+//                finalValues[keyVal[0]] = keyVal[1];
+//            }
+                        //return finalValues;
+                    }
+                };
+
+                // A really lightweight plugin wrapper around the constructor,
+                // preventing against multiple instantiations
+                jQuery.fn[pluginName] = function (options) {
+                    return this.each(function () {
+                        if (!jQuery.data(this, "plugin_" + pluginName)) {
+                            jQuery.data(this, "plugin_" + pluginName, new Users(this, options));
+                        }
+                    });
+                };
+            })(jQuery, window, document);
+            var tb = tb || {};
+            tb.fields = (function () {
+
+                var defaults = {
+                }
+                var fields = [
+                    {name: "id", type: "input", attributes: {size: 6, disabled: true}, label: "Id"},
+                    {name: "summary", type: "input", attributes: {size: 30}, label: "Summary"},
+                    {name: "description", type: "textarea", attributes: {rows: 5, cols: 29}, label: "Description"},
+                    {name: "assigned_to", type: "select", attributes: {}, label: "Assigned To"},
+                    {name: "performer_state", type: "select", attributes: {options: states.performer_state}, label: "Performer State"},
+                    {name: "requester_state", type: "select", attributes: {options: states.requester_state}, label: "Requester State"},
+                    {name: "provisional_agreed_date", type: "input", attributes: {size: 30}, label: "Provisional Date"},
+                    {name: "agreed_date", type: "input", attributes: {size: 30}, label: "Agreed Date"}/*,
+                     {name: "_1880_full_name", type: "input", attributes:{size:30, disabled:true}, label: "Full Name"}
+                     */
+
+                ];
+                var fieldElems = [];
+                var plugin = this;
+                function createOption(option) {
+                    var opt = new Option(option, option);
+                    return opt;
+                }
+                function setupSelectOpts(selectEl, optionsArr) {
+                    if (typeof optionsArr != "undefined" && optionsArr.length > 0) {
+                        for (var i = 0; i < optionsArr.length; i++) {
+                            selectEl.options[i] = createOption(optionsArr[i]);
+                        }
+                    }
+                    return selectEl;
+
+                }
+                function addAttribs(el, attribs) {
+                    for (var i in attribs) {
+                        if (attribs.hasOwnProperty(i) && typeof el[i] != "undefined") {
+                            el[i] = attribs[i];
+                        }
+                    }
+                    return el;
+                }
+
+                return{
+                    init: function (fieldObjectsArr, form) {
+                        for (var i = 0; i < fieldObjectsArr.length; i++) {
+                            var field = this.setupField(fieldObjectsArr[i]);
+                            jQuery(form).find("fieldset").append(field);
+                        }
+                        // code goes here
+                    },
+                    setupLabel: function (fname, flabel) {
+                        var l = document.createElement("label");
+                        l.for = fname;
+                        l.innerHTML = flabel;
+                        return l;
+                    },
+                    setupInput: function (fieldObj) {
+                        // code goes here
+                        var inp = document.createElement("input");
+                        inp.name = fieldObj.name;
+                        inp.id = fieldObj.name;
+                        return inp;
+                    },
+                    setupSelect: function (fieldObj) {
+                        var sel = document.createElement("select");
+                        sel.name = fieldObj.name;
+                        sel.id = fieldObj.name;
+                        var finalSel = setupSelectOpts(sel, fieldObj.attributes.options);
+                        return finalSel;
+                        // code goes here
+                    },
+                    setupTextarea: function (fieldObj) {
+                        var txtArea = document.createElement("textarea");
+                        txtArea.name = fieldObj.name;
+                        txtArea.id = fieldObj.name;
+                        return txtArea;
+                    },
+                    setupRadio: function (fieldObj) {
+
+                    },
+                    setupField: function (fieldObj) {
+                        var f;
+                        switch (fieldObj.type) {
+                            case 'input' :
+                                f = this.setupInput(fieldObj);
+                                break;
+
+                            case 'select' :
+                                f = this.setupSelect(fieldObj);
+                                break;
+
+                            case 'textarea' :
+                                f = this.setupTextarea(fieldObj);
+                                break;
+
+                            case 'radio' :
+                                f = this.setupRadio(fieldObj);
+                                break;
+                        }
+                        var finalField = addAttribs(f, fieldObj.attributes);
+//            for(var i in fieldObj.attributes){
+//                if(f.hasOwnProperty(i)){
+//                    f[i] = fieldObj.attributes[i];
+//                }
+//            }
+                        var l = this.setupLabel(fieldObj.name, fieldObj.label)
+                        var cont = document.createElement("div");
+                        cont.appendChild(l);
+                        cont.appendChild(finalField);
+                        fieldElems.push(finalField);
+                        return cont;
+                    },
+                    getFieldElements: function () {
+                        return fieldElems;
+                    },
+                    addFieldElement: function (fieldElem) {
+                        fieldElems.push(fieldElem);
+                    },
+                    getTestFields: function () {
+                        return fields;
+                    },
+                    loadRecordIntoForm: function (rec, formEl) {
+
+                    }
+                }
+            });
+            tb.users = (function () {
+
+                return{
+                    getUsersArray: function (ewApi) {
+                        ewApi.setupApi({table: "Contacts.Employees",
+                            search: "KanbanUsers",
+                            fieldsArr: [{name: "_login", "name": "full_name"}]
+                        });
+                        var logins = ewApi.searchTable();
+                        //       console.log(logins);
+                        return logins;
+                    }
+                }
+            });
+//jQuery(document).ready(function() {
+//
+//    // attach the plugin to an element
+//    jQuery('#element').pluginName({'foo': 'bar'});
+//
+//    // call a public method
+//    jQuery('#element').data('pluginName').foo_public_method();
+//
+//    // get the value of a property
+//    jQuery('#element').data('pluginName').settings.foo;
+//
+//});
+        </script>
+        <meta name="google-signin-client_id" content="224368332356-3svbmafnaab7dfvqt9d284l6lhchodd7.apps.googleusercontent.com"></meta>
+
+        <link rel="stylesheet" href="https://code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
+        <script>
+            var states = {performer_state: [
+                    "Choose one",
+                    "Agreed",
+                    "Counter Offer",
+                    "Pending",
+                    "Declined",
+                    "Revoke No Agreement",
+                    "Requester Revoked",
+                    "Cancelled/Closed",
+                    "Completed"],
+                requester_state: [
+                    "Open",
+                    "Assigned",
+                    "Agreed",
+                    "Counter Offer",
+                    "Agreed To Counter",
+                    "Accepted as Completed",
+                    "Pending",
+                    "Closed",
+                    "Cancelled/Closed",
+                    "Reassigned",
+                    "C/Offer Declined",
+                    "Declined",
+                    "Reject",
+                    "Revoke No Agreement",
+                    "New Assigned",
+                    "Completed"],
+                state: [
+                    "Preparation",
+                    "Negotiation",
+                    "Performance",
+                    "Transition",
+                    "Pending",
+                    "Cancelled/Closed",
+                    "Rejected",
+                    "Revoke No Agreement",
+                    "Requester Revoked",
+                    "Completed",
+                    "Closed"
+                ]};
+            function logit(msg) {
+                jQuery("#log").append("<pre>" + msg + "</pre>");
+            }
+            jQuery(document).ready(function () {
+                var ew = new api();
+                ew.setupApi({ewkb: "CX1", "user": "devadmin", "pass": "Chuffed1", "table": "furniture", "search": "Unclosed",
+                    "apiurl": "https://katara.techtime.org/ewws/"});
+                jQuery("#log").draggable({});
+                var fieldFactory = new tb.fields();
+                var testFields = fieldFactory.getTestFields();
+                var users = new tb.users();
+                var loginsArr = users.getUsersArray(ew);
+                testFields[3].attributes.options = loginsArr.map(function (obj) {
+                    return obj._login;
+                });
+                fieldFactory.init(testFields, document.forms.edit);
+                ew.setupApi({table: "furniture", search: "Unclosed", "fieldsArr": testFields});
+
+                var cards = ew.searchTable();
+                //var users = new Users(jQuery("#assigned_to"));
+                jQuery("#user").Users();
+                jQuery("#user").val("devadmin");
+                jQuery("#assigned_to").Users();
+                //jQuery("#main").Kanban();
+                var table = jQuery("#table"),
+                        search = jQuery("#search"),
+                        state_field = jQuery("#state_field"),
+                        fields = jQuery("#fields"),
+                        load = jQuery("#load"),
+                        user = jQuery("#user"),
+                        password = jQuery("#password"),
+                        columns = jQuery("#columns"),
+                        autoColumns = jQuery("#autoColumns");
+                load.trigger("click");
+
+                state_field.on("change", function () {
+                    var newStateField = jQuery(this).val();
+                    var columnsSelected = fields.val() || [];
+                    columnsSelected.push(newStateField);
+                    fields.val(columnsSelected);
+                    var stateCols = document.getElementById("columns");
+                    switch (newStateField) {
+                        case 'performer_state' :
+                            stateCols.selectedIndex = 0
+                            break;
+
+                        case 'requester_state' :
+                            stateCols.selectedIndex = 2
+                            break;
+
+                        case 'state' :
+                            stateCols.selectedIndex = 1;
+                            break;
+
+                    }
+                });
+//                jQuery(".hotlink").on("click", function(e){
+//                    e.preventDefault();
+//                    console.log(this);
+//                    var hl = jQuery(this).data("link");
+//                    // jQuery("#ewFrame").attr("src", url);
+//                    console.log(hl);
+//                    // document.getElementById("ewFrame").src = url;
+////                    var iFrm = document.createElement("iframe");
+//  //                  jQuery("#dialog").append(iFrm);
+//                    // iFrm.src = url;
+//                    jQuery("#dialog").empty().html("<iframe src='"+hl+"' width='100%' height='100%'></iframe>");
+//                    jQuery("#dialog").dialog("open");
+//                    return false;
+//                });
+                columns.on("change", function () {
+                    var selVal = jQuery(this).val();
+                    var stateF = document.getElementById("state_field");
+                    if (selVal.search(/(Performer)/)) {
+                        stateF.selectedIndex = 0;
+                        var columnsSelected = fields.val();
+                        columnsSelected.push("performer_state");
+                        fields.val(columnsSelected);
+                    } else if (selfVal.search(/(Requester)/)) {
+                        stateF.selectedIndex = 1;
+                        var columnsSelected = fields.val();
+                        columnsSelected.push("requester_state");
+                        fields.val(columnsSelected);
+                    } else {
+                        stateF.selectedIndex = 2;
+                        var columnsSelected = fields.val();
+                        columnsSelected.push("state");
+                        fields.val(columnsSelected);
+                    }
+                })
+
+                load.on("click", function (e) {
+                    e.preventDefault();
+                    jQuery(".kbstate").remove();
+                    var stateColumn = state_field.val();
+                    jQuery(".state_field").remove();
+                    ew.setupApi({ewkb: "CX1",
+                        "user": user.val(),
+                        "pass": password.val(),
+                        "table": table.val(),
+                        "search": search.val(),
+                        "apiurl": "https://katara.techtime.org/ewws/",
+                        "fieldsArr": fields.val()});
+                    var cards = ew.searchTable();
+                    var opts = {
+                        columnField: stateColumn,
+                        search: search.val(),
+                        table: table.val(),
+                        fields: fields.val(),
+                        user: user.val(),
+                        password: password.val(),
+                        cols: eval(columns.val()),
+                        autoColumns: autoColumns.val(),
+                        cards: cards
+                    };
+                    logit(opts);
+                    jQuery("#main").Kanban(opts);
+                    jQuery("#main").sortable({
+                        connectWith: ".kbstate",
+                        forceHelperSize: true,
+                        forcePlaceholderSize: true
+                    });
+                });
+                jQuery("#closeSettings").on("click", function (e) {
+                    var cont = jQuery("#menu");
+                    if (cont.css("margin-left") != "-975px") {
+                        cont.css({"margin-left": "-975px"});
+                        jQuery(this).text("+");
+                    } else {
+                        cont.css({"margin-left": "-5px"});
+                        jQuery(this).text("X");
+                    }
+
+                });
+
+            });
+
+        </script>
+        <style>
+
+            #main{width: 100%; height: 80%; display: block; margin: auto auto; background: #999;  list-style-type: none; padding: 0;}
+            #menu{border:2px solid silver; background: #CCC; width: 1000px; position: absolute; height: 120px;
+                  margin: 0px; border-bottom-right-radius: 30px; margin-top: -5px; margin-left: -5px; transition-duration: 250ms; transition-property: all;
+                  bottom:2px; left:2px; z-index: 9999;}
+            #fields{position: absolute; right: 50px; top:2px;}
+            #fields_label{position: absolute; right:150px; top: 2px;}
+            #menu label{min-width: 80px; display: inline-block;}
+            .kbstate{min-height:700px; max-height: 800px; overflow: scroll;  height: 100%; border: 2px groove green; 
+                     margin-right: 5px;float: left;top:0px; left:0px; background: #FFF;}
+            .kbstate h1{width: 100%; text-align: center; background: #333; color: #FFF; font-weight: bold; padding: 5px; margin-top: 0px;            
+                        z-index: 999; font-size: 14px;  top:0px; left:0px; position: sticky; display: block; }
+            .kbstate h1 .new{position: absolute; right:12px; top:1px; width:20px; padding: 1px; height:16px; border-radius: 8px; background: #999; 
+                             color: greenyellow; border: 2px solid white; display: block; text-decoration: none;}
+            .card{margin-bottom: 5px; margin-left: 5px; margin: 10px; width:80%; max-width: 160px; padding: 2px; height:100px; display:block; background: #eee; 
+                  border:1px solid silver; overflow: hidden; position: relative; float: left; z-index: 9;}
+            .card p{margin:0px; background: #FFF; color: cornflowerblue; font-weight: bold;}
+            .card .name{position: absolute; bottom: 0px; right: 0px; background: transparent; color:white; font-weight: normal; padding: 4px;
+                        display: none;}
+            .card img{position:absolute; bottom: 2px; right:2px;}
+
+            .test{border: 2px solid purple;}
+            #dialog{display: none;}
+            #dialog form label {width:160px; display:inline-block; margin-bottom: 6px;}
+            #edit select{width: 60%;}
+            #log{position: fixed; bottom: -160px; overflow-style: marquee-block; right: 0px; height: 200px; width:30%; display: block; overflow: scroll; border:2px groove silver;
+                 padding: 0px; background: #FFF; border-top-left-radius: 25px;  z-index: 999; }
+            #log h1{margin: 0px; width: 100%; background: #666; text-indent: 15px; color: #FFF;}
+            .close{width:10px; height:5px; display: block; border-radius: 15px; background: #333; color: red; border: 2px solid #FFF;
+                   padding: 10px; padding-top: 5px; text-align: center; position: absolute; top: 5px; right: 5px; padding-bottom: 18px;}
+            #ewform label{width:120px; display:inline-block;}
+        </style>
+    </head>
+
+    <body>
+        <div id="menu">
+            <label for="table">Table: </label>
+            <select id="table">
+                <option value="furniture">Furniture</option>
+                <option value="monitor">Monitor</option>
+                <option value="quality_report">Quality Report</option>
+            </select>
+            <label for="search">Search: </label>
+            <select id="search">
+                <option value="Unclosed">Unclosed</option>
+                <option value="OverdueAgreed">Overdue Agreed</option>
+                <option value="My Assigned">My Assigned</option>
+                <option value="All">All</option>
+            </select>
+            <label for="state_field">State Field: </label>
+            <select id="state_field">
+                <option value="performer_state">Performer State</option>
+                <option value="requester_state">Requester State</option>
+                <option value="state">State</option>
+            </select>
+            <label for="autoColumns">Auto Columns: </label>
+            <select id="autoColumns">
+                <option value="true">True</option>
+                <option selected="" value="false">False</option>
+            </select><br>
+            <label for="columns">Columns: </label>
+            <!--             <input id="columns" type="text" size='30' value="[]"><br> -->
+            <select name="columns" id="columns">
+                <option value='["Choose one", "Agreed", "Counter Offer", "Declined", "Pending", "Completed"]'>Performer: ["Agreed", "Counter Offer", "Declined", "Pending", "Completed"]</option>
+                <option value='["Preparation", "Negotiation", "Performance", "Completed"]'>State: ["Preparation", "Negotiation", "Performance", "Completed"]</option>
+                <option value='["Assigned", "Reassigned", "Counter Offer", "Agreed", "Open", "Cancelled/Closed", "Completed"]'>Requester: ["Assigned", "Reassigned", "Counter Offer", "Agreed", "Open", "Cancelled/Closed", "Completed"]</option>
+            </select><br>
+            <label for="user">User: </label>
+            <input id="user" type="text" size="16" value="devadmin">
+            <!--            <select id="user"></select>-->
+            <label for="password">Password: </label>
+            <input id="password" type="text" size="16" value="Chuffed1">
+            <button id="load" tabindex="1">Load</button><br>
+            <label for="fields" id="fields_label">Fields: </label><br>
+            <select id="fields" multiple="multiple">
+                <option selected="" value="summary">Summary</option>
+                <option selected="" value="performer_state">Performer State</option>
+                <option selected="" value="description">Description</option>
+                <option selected="" value="id">Id</option>
+                <option selected="" value="state">State</option>
+                <option selected="" value="assigned_to">Assigned To</option>
+                <option selected="" value="requester_state">Requester State</option>
+                <option selected="" value="agreed_date">Agreed Date</option>
+                <option selected="" value="provisional_agreed_date">Provisional Agreed Date</option>
+                <option selected="" value="_1880_full_name">Full Name</option>
+            </select>
+            <!-- <input id="fields" type="text" size="30" value='["summary", "performer_state", "description", "id", "state", "assigned_to"]'> -->
+            <div id="gConnect" style="float:right;">
+                <div id="signin-button"></div>
+            </div>
+            <div id="authOps">
+                <button id="signOut" onclick="auth2.signOut()">Sign Out</button>
+                <button id="disconnect" >Disconnect your Google account from this app</button>
+                <div id="profile" style="float:right; margin-top: -40px;"></div>
+
+
+
+            </div>
+
+            <div id="gConnect">
+                <div id="signin-button"></div>
+            </div>
+            <a class="close" id="closeSettings" href="#">X</a>
+            <div id="profile">
+
+            </div>
+        </div>
+        <ul id="main">
+
+        </ul>
+        <div id="dialog">
+            <!--            <form name="ewform" id="ewform"></form>-->
+            <!--            <iframe id="ewFrame" src="" width="100%" height="100%">
+                            
+                        </iframe>-->
+            <form id="edit" name="edit" style="display: none;">
+                <fieldset>
+                    <legend>Edit Card</legend>
+                    <!--                    <label for="id">Id:</label>
+                                        <input type="text" name="id" id="id"><br>                
+                                        <label for="summary">Summary:</label>
+                                        <input type="text" name="summary" id="summary"><br>
+                                        <label for="description">Description:</label>
+                                        <textarea name="description" id="description"></textarea><br>
+                    
+                                         <select name="performer_state" id="performer_state">
+                                            <option selected="" value="Agreed">Agreed</option>
+                                            <option selected="" value="Pending">Pending</option>
+                                            <option value="Completed">Completed</option>
+                                            <option value="Counter Offer">Counter Offer</option>
+                                            <option value="Declined">Declined</option>
+                                        </select><br> 
+                                        <label for="assigned_to">Assigned To:</label>
+                                        <select name="assigned_to" id="assigned_to">
+                                        </select><br>-->
+                </fieldset>
+            </form>
+        </div>
+        <div id="log">
+            <h1>Log</h1>
+            <h2>Authentication Logs</h2>
+            <pre id="authResult"></pre>
+            <a class="close" href="#">X</a>
+
+        </div>
+    </body>
+</html>
